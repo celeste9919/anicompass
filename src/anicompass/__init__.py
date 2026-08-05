@@ -1,0 +1,2 @@
+"""AniCompass desktop application package."""
+
