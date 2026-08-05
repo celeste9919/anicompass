@@ -102,11 +102,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --clobber
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
           else
             gh release create "$TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
               --title "AniCompass $TAG" \
               --notes "跨平台补充发行包：macOS 与 Linux。"
           fi
+
 
