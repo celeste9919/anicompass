@@ -34,6 +34,10 @@ jobs:
           pyinstaller --noconfirm --windowed --name AniCompass
           --add-data 'src/anicompass/ui/Main.qml:src/anicompass/ui'
           src/anicompass/main.py
+      - name: Install Linux Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libxkbcommon-x11-0 libxcb-cursor0
       - name: Smoke test Linux bundle
         run: QT_QPA_PLATFORM=offscreen ./dist/AniCompass/AniCompass --smoke-test
       - name: Package Linux release
@@ -105,3 +109,4 @@ jobs:
               --title "AniCompass $TAG" \
               --notes "跨平台补充发行包：macOS 与 Linux。"
           fi
+
