@@ -1,4 +1,4 @@
-﻿"""AniCompass PySide6/QML application entry point."""
+"""AniCompass PySide6/QML application entry point."""
 
 from __future__ import annotations
 
@@ -7,11 +7,12 @@ import os
 import sqlite3
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QObject, QStandardPaths, QUrl
-from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from anicompass.ai import (
     AIConfigBridge,
@@ -174,13 +175,42 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def write_startup_error(error: BaseException) -> Path:
+    error_text = traceback.format_exc()
+    candidates = [
+        resolve_config_dir() / "startup-error.log",
+        Path(tempfile.gettempdir()) / "AniCompass" / "startup-error.log",
+    ]
+    for log_path in candidates:
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_path.write_text(error_text, encoding="utf-8")
+            return log_path
+        except OSError:
+            continue
+    fallback = Path(tempfile.gettempdir()) / "AniCompass" / "startup-error.log"
+    fallback.parent.mkdir(parents=True, exist_ok=True)
+    fallback.write_text(error_text, encoding="utf-8")
+    return fallback
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_application_metadata()
-    app = QGuiApplication(sys.argv[:1])
+    app = QApplication(sys.argv[:1])
 
-    # Smoke tests verify the QML shell loads before business features are added.
-    create_engine()
+    try:
+        # Smoke tests verify the QML shell loads before business features are added.
+        create_engine()
+    except BaseException as exc:
+        log_path = write_startup_error(exc)
+        if app is not None:
+            QMessageBox.critical(
+                None,
+                "AniCompass ????",
+                f"????????????????{log_path}",
+            )
+        return 1
 
     if args.smoke_test:
         return 0
