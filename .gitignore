@@ -1,4 +1,4 @@
-﻿.venv/
+.venv/
 __pycache__/
 .pytest_cache/
 .ruff_cache/
@@ -9,6 +9,7 @@ __pycache__/
 
 build/
 dist/
+release/
 *.spec.bak
 
 *.db
