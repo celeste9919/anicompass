@@ -1,4 +1,4 @@
-﻿"""Local backup and restore service."""
+"""Local backup and restore service."""
 
 from __future__ import annotations
 
@@ -14,8 +14,6 @@ from anicompass.backup.models import (
     BackupHistorySession,
     BackupWatchListItem,
 )
-from anicompass.history.repository import SQLiteHistoryRepository
-from anicompass.watchlist.repository import SQLiteWatchListRepository
 
 
 class BackupError(Exception):
@@ -35,7 +33,6 @@ class BackupService:
 
     def __init__(self, database_path: Path | str) -> None:
         self._database_path = str(database_path)
-        self._ensure_schema()
 
     def export_backup(self, output_path: Path | str) -> AniCompassBackup:
         backup = self.build_backup()
@@ -53,6 +50,7 @@ class BackupService:
 
     def build_backup(self) -> AniCompassBackup:
         with self._connect() as connection:
+            self._ensure_tables(connection)
             watch_items = tuple(
                 self._watch_item_from_row(row)
                 for row in connection.execute(
@@ -90,6 +88,7 @@ class BackupService:
     def import_backup(self, backup_path: Path | str) -> AniCompassBackup:
         backup = self.inspect_backup(backup_path)
         with self._connect() as connection:
+            self._ensure_tables(connection)
             try:
                 connection.execute("BEGIN")
                 connection.execute("DELETE FROM watch_list_items")
@@ -128,16 +127,46 @@ class BackupService:
                 connection.commit()
         return backup
 
-    def _ensure_schema(self) -> None:
-        watch_repo = SQLiteWatchListRepository(self._database_path)
-        watch_repo.close()
-        history_repo = SQLiteHistoryRepository(self._database_path)
-        history_repo.close()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._database_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _ensure_tables(self, connection: sqlite3.Connection) -> None:
+        with connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS watch_list_items (
+                    item_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    catalog_source TEXT NOT NULL,
+                    provider_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    original_title TEXT,
+                    image_url TEXT,
+                    source_url TEXT,
+                    status TEXT NOT NULL,
+                    progress INTEGER NOT NULL DEFAULT 0,
+                    score INTEGER,
+                    notes TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(catalog_source, provider_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS recommendation_history_sessions (
+                    session_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    preferences TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    verified_count INTEGER NOT NULL,
+                    unresolved_count INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )
+                """
+            )
 
     def _watch_item_from_row(self, row: sqlite3.Row) -> BackupWatchListItem:
         return BackupWatchListItem(
