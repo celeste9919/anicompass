@@ -1,0 +1,107 @@
+﻿name: Build macOS and Linux releases
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to update
+        required: true
+        default: v0.1.0
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime and packaging dependencies
+        run: >-
+          python -m pip install --upgrade pip &&
+          python -m pip install
+          PySide6==6.11.1
+          keyring==25.7.0
+          httpx==0.28.1
+          pydantic==2.13.4
+          pyinstaller==6.21.0
+      - name: Build Linux application bundle
+        run: >-
+          pyinstaller --noconfirm --windowed --name AniCompass
+          --add-data 'src/anicompass/ui/Main.qml:src/anicompass/ui'
+          src/anicompass/main.py
+      - name: Smoke test Linux bundle
+        run: QT_QPA_PLATFORM=offscreen ./dist/AniCompass/AniCompass --smoke-test
+      - name: Package Linux release
+        run: |
+          mkdir -p release
+          tar -C dist -czf release/AniCompass-linux-x64-${{ inputs.tag }}.tar.gz AniCompass
+          sha256sum release/AniCompass-linux-x64-${{ inputs.tag }}.tar.gz \
+            > release/AniCompass-linux-x64-${{ inputs.tag }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: release/
+          if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime and packaging dependencies
+        run: >-
+          python -m pip install --upgrade pip &&
+          python -m pip install
+          PySide6==6.11.1
+          keyring==25.7.0
+          httpx==0.28.1
+          pydantic==2.13.4
+          pyinstaller==6.21.0
+      - name: Build macOS application bundle
+        run: >-
+          pyinstaller --noconfirm --windowed --name AniCompass
+          --add-data 'src/anicompass/ui/Main.qml:src/anicompass/ui'
+          src/anicompass/main.py
+      - name: Smoke test macOS bundle
+        run: ./dist/AniCompass.app/Contents/MacOS/AniCompass --smoke-test
+      - name: Package macOS release
+        run: |
+          mkdir -p release
+          ARCH="$(uname -m)"
+          ditto -c -k --sequesterRsrc --keepParent dist/AniCompass.app \
+            release/AniCompass-macos-${ARCH}-${{ inputs.tag }}.zip
+          shasum -a 256 release/AniCompass-macos-${ARCH}-${{ inputs.tag }}.zip \
+            > release/AniCompass-macos-${ARCH}-${{ inputs.tag }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: release/
+          if-no-files-found: error
+
+  publish:
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --title "AniCompass $TAG" \
+              --notes "跨平台补充发行包：macOS 与 Linux。"
+          fi
